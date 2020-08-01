@@ -6,7 +6,6 @@ import (
 	"net/http"
 )
 
-// TODO already existence links doesn't redirect
 func main() {
 	urls := shortener.InitPathStruct()
 	urlHandler := shortener.URLHandler(urls, http.NewServeMux())
