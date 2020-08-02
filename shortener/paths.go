@@ -19,47 +19,39 @@ type Path struct {
 	To   string `json:"to, omitempty"`
 }
 
-func InitPathStruct() map[string]string {
+func InitPathStruct() (map[string]string, error) {
 	flag.Parse()
-	if *redirect {
-		fmt.Println("REDIRECTION MODE!")
-		return nil
-	}
-	if len(*from) == 0 {
-		fmt.Println("-f parameter is required!\nType -h or --help for further instructions.")
-		return nil
-	}
-	if len(*to) == 0 {
-		fmt.Println("-t parameter is required!\nType -h or --help for further instructions.")
-		return nil
-	}
 
-	if !strings.HasPrefix(*to, "http") {
-		fmt.Println("-t must starts with http(s)")
-		return nil
-	}
-	if !strings.HasPrefix(*from, "/") {
-		fmt.Println("-t must starts with /")
-		return nil
-	}
+	if !(*redirect) {
+		fmt.Println("wow")
+		if len(*from) == 0 {
+			return nil, fmt.Errorf("-f parameter is required!\nType -h or --help for further instructions.\n")
+		}
+		if len(*to) == 0 {
+			return nil, fmt.Errorf("-t parameter is required!\nType -h or --help for further instructions.\n")
+		}
 
+		if !strings.HasPrefix(*to, "http") {
+			return nil, fmt.Errorf("-t must starts with http(s)\n")
+		}
+		if !strings.HasPrefix(*from, "/") {
+			return nil, fmt.Errorf("-f must starts with /\n")
+		}
+	}
 	err := generateJSON(*filename)
 	if err != nil {
-		fmt.Println("generateJSON |", err)
-		return nil
+		return nil, fmt.Errorf("%s\n", err)
 	}
 
 	file, err := ioutil.ReadFile(*filename)
 	if err != nil {
-		fmt.Println("ReadFile |", err)
-		return nil
+		return nil, fmt.Errorf("%s\n", err)
 	}
 
 	var paths []Path
 	err = json.Unmarshal(file, &paths)
 	if err != nil {
-		fmt.Println("Unmarshal |", err)
-		return nil
+		return nil, fmt.Errorf("%s\n", err)
 	}
 
 	inpPath := Path{From: *from, To: *to}
@@ -68,19 +60,19 @@ func InitPathStruct() map[string]string {
 		byteArr, err := json.Marshal(newPaths)
 		if err != nil {
 			fmt.Println(err)
-			return nil
+			return nil, fmt.Errorf("%s\n", err)
 		}
 
 		err = ioutil.WriteFile(*filename, byteArr, 0644)
 		if err != nil {
 			fmt.Println(err)
-			return nil
+			return nil, fmt.Errorf("%s\n", err)
 		}
 		fmt.Printf("==== localhost:3000%s redirects to %s ====\n", inpPath.From, inpPath.To)
-		return getURLS(newPaths)
+		return getURLS(newPaths), nil
 	}
 	fmt.Printf("==== localhost:3000%s redirects to %s ====\n", inpPath.From, inpPath.To)
-	return getURLS(paths)
+	return getURLS(paths), nil
 }
 
 func pathExists(path *Path, paths *[]Path) bool {
