@@ -21,14 +21,12 @@ type Path struct {
 
 func InitPathStruct() (map[string]string, error) {
 	flag.Parse()
-
 	if !(*redirect) {
-		fmt.Println("wow")
 		if len(*from) == 0 {
-			return nil, fmt.Errorf("-f parameter is required!\nType -h or --help for further instructions.\n")
+			return nil, fmt.Errorf("-f parameter is required, If -r doesn't used.\nType -h or --help for further instructions.\n")
 		}
 		if len(*to) == 0 {
-			return nil, fmt.Errorf("-t parameter is required!\nType -h or --help for further instructions.\n")
+			return nil, fmt.Errorf("-t parameter is required, If -r doesn't used.\nType -h or --help for further instructions.\n")
 		}
 
 		if !strings.HasPrefix(*to, "http") {
@@ -38,6 +36,11 @@ func InitPathStruct() (map[string]string, error) {
 			return nil, fmt.Errorf("-f must starts with /\n")
 		}
 	}
+
+	if !strings.HasSuffix(*filename, "json") {
+		return nil, fmt.Errorf("Expected *.json file, but got '%s'\n", *filename)
+	}
+
 	err := generateJSON(*filename)
 	if err != nil {
 		return nil, fmt.Errorf("%s\n", err)
