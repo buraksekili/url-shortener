@@ -102,25 +102,27 @@ func generateJSON(fname string) error {
 			fmt.Println(err)
 			return err
 		}
-		initJSON(fname)
+		err = InitJSON(fname)
+		if err != nil {
+			return err
+		}
 	}
 	return nil
 }
 
-func initJSON(fname string) {
+func InitJSON(fname string) error {
 	file, err := os.OpenFile(fname, os.O_CREATE|os.O_WRONLY|os.O_APPEND, os.ModePerm)
 	if err != nil {
-		fmt.Println("Json file couldn't open.", err)
-		return
+		return fmt.Errorf("%s\n", err)
 	}
 
 	_, err = file.WriteString("[]")
 	if err != nil {
-		fmt.Println("Json file couldn't initialized: ", err)
 		err = file.Close()
 		if err != nil {
 			fmt.Println("Json file couldn't closed!", err)
 		}
-		return
+		return fmt.Errorf("%s\n", err)
 	}
+	return nil
 }
