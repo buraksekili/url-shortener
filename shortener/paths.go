@@ -2,51 +2,20 @@ package shortener
 
 import (
 	"encoding/json"
-	"flag"
 	"fmt"
+	"github.com/fatih/color"
 	"io/ioutil"
 	"os"
 	"strings"
 )
 
-var filename = flag.String("n", "paths.json", "OPTIONAL. The name of the json file that stores paths.")
-var redirect = flag.Bool("r", false, "OPTIONAL. If -r is true, you can use redirection without specifying new url.")
-var from = flag.String("f", "", "REQUIRED in edit mode. The name of the site that will be shortened. It needs to include http or https part of the url. (From site -f to site -t)")
-var to = flag.String("t", "", "REQUIRED in edit mode. The name of the target website. It needs to include http or https part of the url. (From site -f to site -t)")
-
-type Path struct {
-	From string `json:"from, omitempty"`
-	To   string `json:"to, omitempty"`
-}
-
-func InitPathStruct() (map[string]string, error) {
-	flag.Parse()
-	if !(*redirect) {
-		if len(*from) == 0 {
-			return nil, fmt.Errorf("-f parameter is required, If -r doesn't used.\nType -h or --help for further instructions.\n")
-		}
-		if len(*to) == 0 {
-			return nil, fmt.Errorf("-t parameter is required, If -r doesn't used.\nType -h or --help for further instructions.\n")
-		}
-
-		if !strings.HasPrefix(*to, "http") {
-			return nil, fmt.Errorf("-t must starts with http(s)\n")
-		}
-		if !strings.HasPrefix(*from, "/") {
-			return nil, fmt.Errorf("-f must starts with /\n")
-		}
-	}
-
-	if !strings.HasSuffix(*filename, "json") {
-		return nil, fmt.Errorf("Expected *.json file, but got '%s'\n", *filename)
-	}
-
-	err := generateJSON(*filename)
+func readJSON(fname string) ([]Path, error) {
+	err := generateJSON(fname)
 	if err != nil {
 		return nil, fmt.Errorf("%s\n", err)
 	}
 
-	file, err := ioutil.ReadFile(*filename)
+	file, err := ioutil.ReadFile(fname)
 	if err != nil {
 		return nil, fmt.Errorf("%s\n", err)
 	}
@@ -56,35 +25,121 @@ func InitPathStruct() (map[string]string, error) {
 	if err != nil {
 		return nil, fmt.Errorf("%s\n", err)
 	}
-
-	inpPath := Path{From: *from, To: *to}
-	if !pathExists(&inpPath, &paths) {
-		newPaths := append(paths, inpPath)
-		byteArr, err := json.Marshal(newPaths)
-		if err != nil {
-			fmt.Println(err)
-			return nil, fmt.Errorf("%s\n", err)
-		}
-
-		err = ioutil.WriteFile(*filename, byteArr, 0644)
-		if err != nil {
-			fmt.Println(err)
-			return nil, fmt.Errorf("%s\n", err)
-		}
-		fmt.Printf("==== localhost:3000%s redirects to %s ====\n", inpPath.From, inpPath.To)
-		return getURLS(newPaths), nil
-	}
-	fmt.Printf("==== localhost:3000%s redirects to %s ====\n", inpPath.From, inpPath.To)
-	return getURLS(paths), nil
+	return paths, nil
 }
 
-func pathExists(path *Path, paths *[]Path) bool {
+func CheckOp() (map[string]string, error) {
+	var op Op
+	op = ParseFlags(os.Args[1:])
+
+	switch v := op.(type) {
+	case HelpOp:
+		printHelp(os.Stdout)
+	case FilenameOp:
+		if !strings.HasSuffix(v.Name, "json") {
+			fmt.Printf("%s Expected <FILENAME> type is *.json, but got '%s'\n", color.RedString("Error:"), v.Name)
+			printHelp(os.Stdout)
+			os.Exit(1)
+		}
+		var paths []Path
+		paths, err := readJSON(v.Name)
+		if err != nil {
+			fmt.Printf("Error in readJSON %s\n", err)
+			os.Exit(1)
+		}
+		byteArr, err := json.Marshal(paths)
+		err = ioutil.WriteFile(v.Name, byteArr, 0644)
+		if err != nil {
+			fmt.Println("error in ioutil.Writefile:", err)
+			os.Exit(1)
+		}
+	case FindOp:
+		target := v.target
+		var fname string = "paths.json"
+
+		// If filename is specified via flags, update fname
+		if len(v.filename) > 0 {
+			fname = v.filename
+		}
+		// Usage of '/' as a prefix disabled because it causes errors in Windows.
+		if strings.HasPrefix(target, "/") || strings.Contains(target, ":/") {
+			fmt.Printf(color.RedString("Do not use '/' as a prefix.\n"))
+			printHelp(os.Stdout)
+			return nil, fmt.Errorf(color.RedString("Do not use '/' as a prefix."))
+		}
+
+		target = "/" + target
+		var paths []Path
+		paths, err := readJSON(fname)
+		if err != nil {
+			fmt.Printf("%s %s\n", color.RedString("Error: "), err)
+		}
+		if exists, val := pathExists(target, &paths); exists {
+			fmt.Printf("%s\t%s exists in %s as:%s\n", color.GreenString("DONE!"), target, fname, val)
+			urls := make(map[string]string)
+			urls[target] = val
+			return urls, nil
+		} else {
+			return nil, fmt.Errorf("%s\n", color.MagentaString(target+" cannot found in "+fname))
+		}
+	case EntryOp:
+		fmt.Printf("from: %s\ttarget: %s\tfile: %s\n", v.From, v.Target, v.FileName)
+		filename := v.FileName
+		err := generateJSON(filename)
+		if err != nil {
+			return nil, fmt.Errorf("%s\n", err)
+		}
+
+		file, err := ioutil.ReadFile(filename)
+		if err != nil {
+			return nil, fmt.Errorf("%s\n", err)
+		}
+
+		var paths []Path
+		err = json.Unmarshal(file, &paths)
+		if err != nil {
+			return nil, fmt.Errorf("%s\n", err)
+		}
+
+		newFrom := "/" + v.From
+		if exists, _ := pathExists(newFrom, &paths); !exists {
+			newPaths := append(paths, Path{From: newFrom, To: v.Target})
+			byteArr, err := json.Marshal(newPaths)
+			if err != nil {
+				fmt.Println(err)
+				return nil, fmt.Errorf("%s\n", err)
+			}
+
+			err = ioutil.WriteFile(filename, byteArr, 0644)
+			if err != nil {
+				fmt.Println(err)
+				return nil, fmt.Errorf("%s\n", err)
+			}
+			return getURLS(newPaths), nil
+		}
+		return nil, fmt.Errorf("lol")
+
+	case UnknownOp:
+		fmt.Printf("%s unsupported operation: %s\n", color.RedString("Error:"), v.args)
+		if v.args[0] == "-f" || v.args[0] == "--fname" {
+			fmt.Printf("%s %s requires <FILENAME>.\n", color.RedString("Note!"), v.args[0])
+		}
+		printHelp(os.Stdout)
+		os.Exit(1)
+	default:
+		fmt.Printf("Operation %T is not handled\n", op)
+	}
+	return nil, nil
+}
+
+func pathExists(path string, paths *[]Path) (bool, string) {
 	for _, v := range *paths {
-		if (*path).From == v.From {
-			return true
+		fmt.Printf("From: %s\tTo: %s\n", v.From, v.To)
+		if path == v.From {
+			return true, v.To
 		}
 	}
-	return false
+	return false, ""
 }
 
 func getURLS(paths []Path) map[string]string {
