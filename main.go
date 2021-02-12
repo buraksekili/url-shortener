@@ -1,8 +1,8 @@
 package main
 
 import (
-	"./shortener"
 	"fmt"
+	"github.com/buraksekili/url-shortener/shortener"
 	"github.com/fatih/color"
 	"net/http"
 )
